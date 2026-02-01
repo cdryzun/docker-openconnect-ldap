@@ -59,13 +59,37 @@ spec:
           value: split-include
         - name: TUNNEL_ROUTES
           value: 10.1.0.0/25, 192.168.69.0/24
-        image: yangzun/docker-openconnect-ldap:latest
+        image: cdryzun/docker-openconnect-ldap:latest
         name: ocserv
         ports:
         - containerPort: 443
         - containerPort: 443
           protocol: UDP
-        resources: {}
+        livenessProbe:
+          exec:
+            command:
+            - pgrep
+            - ocserv
+          initialDelaySeconds: 10
+          periodSeconds: 30
+          timeoutSeconds: 10
+          failureThreshold: 3
+        readinessProbe:
+          exec:
+            command:
+            - pgrep
+            - ocserv
+          initialDelaySeconds: 5
+          periodSeconds: 10
+          timeoutSeconds: 5
+          failureThreshold: 3
+        resources:
+          requests:
+            memory: "128Mi"
+            cpu: "100m"
+          limits:
+            memory: "512Mi"
+            cpu: "500m"
         securityContext:
           capabilities:
             add:

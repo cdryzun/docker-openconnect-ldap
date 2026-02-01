@@ -26,6 +26,9 @@ RUN \cp -a /config /etc/default/ocserv \
 
 WORKDIR /config
 
+HEALTHCHECK --interval=30s --timeout=10s --start-period=5s --retries=3 \
+    CMD pgrep ocserv > /dev/null || exit 1
+
 EXPOSE 443/tcp \
       443/udp
 

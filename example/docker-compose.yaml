@@ -3,7 +3,7 @@ version: "3"
 services:
   ocserv:
     container_name: ocserv
-    image: morganonbass/ocserv-ldap:latest
+    image: cdryzun/docker-openconnect-ldap:latest
     ports:
       - "443:443/tcp"
       - "443:443/udp"

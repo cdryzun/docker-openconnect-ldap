@@ -1,38 +1,89 @@
-[preview]: https://raw.githubusercontent.com/MarkusMcNugen/docker-templates/master/openconnect/ocserv-icon.png "Custom ocserv icon"
+# OpenConnect VPN Server with LDAP/AD Authentication
 
-![alt text][preview]
+[![Docker Pulls](https://img.shields.io/docker/pulls/cdryzun/docker-openconnect-ldap)](https://hub.docker.com/r/cdryzun/docker-openconnect-ldap)
+[![Docker Image Size](https://img.shields.io/docker/image-size/cdryzun/docker-openconnect-ldap/latest)](https://hub.docker.com/r/cdryzun/docker-openconnect-ldap)
+[![GitHub Stars](https://img.shields.io/github/stars/cdryzun/docker-openconnect-ldap)](https://github.com/cdryzun/docker-openconnect-ldap)
+[![License](https://img.shields.io/github/license/cdryzun/docker-openconnect-ldap)](LICENSE)
+[![Build Status](https://img.shields.io/github/actions/workflow/status/cdryzun/docker-openconnect-ldap/blank.yml?branch=master)](https://github.com/cdryzun/docker-openconnect-ldap/actions)
 
-# OpenConnect VPN Server with Active Directory authentication
-OpenConnect VPN server is an SSL VPN server that is secure, small, fast and configurable. It implements the OpenConnect SSL VPN protocol and has also (currently experimental) compatibility with clients using the AnyConnect SSL VPN protocol. The OpenConnect protocol provides a dual TCP/UDP VPN channel and uses the standard IETF security protocols to secure it. The OpenConnect client is multi-platform and available [here](http://www.infradead.org/openconnect/). Alternatively, you can try connecting using the official Cisco AnyConnect client (Confirmed working with AnyConnect 4.802045).
+[English](README.md) | [中文](README_CN.md)
 
-[Homepage](https://ocserv.gitlab.io/www/platforms.html)
-[Documentation](https://ocserv.gitlab.io/www/manual.html)
-[Source](https://gitlab.com/ocserv/ocserv)
+A Docker container for OpenConnect VPN server with LDAP/Active Directory authentication support. Secure, lightweight, and easy to deploy.
 
-# Docker Features
-* Base: Debian Latest
-* Latest OpenConnect Server 0.12.2
-* LDAP/Active Directory authentication with libpam-ldap
-* Size: 150MB
-* Customizing the DNS servers used for queries over the VPN
-* Supports tunneling all traffic over the VPN or tunneling only specific routes via split-include
-* Config directory can be mounted to a host directory for persistence 
-* Create certs automatically using default or provided values, or drop your own certs in /config/certs
+## Table of Contents
 
-# Run container from Docker registry
-The container is available from the Docker registry and this is the simplest way to get it. It needs a fair few environment variables, so I suggest using docker-compose.
+- [Features](#features)
+- [Architecture](#architecture)
+- [Quick Start](#quick-start)
+  - [Docker Compose](#docker-compose)
+  - [Kubernetes](#kubernetes)
+- [Configuration](#configuration)
+  - [Environment Variables](#environment-variables)
+  - [Volumes](#volumes)
+  - [Ports](#ports)
+- [Certificates](#certificates)
+- [Advanced Configuration](#advanced-configuration)
+- [Security Best Practices](#security-best-practices)
+- [Troubleshooting](#troubleshooting)
+- [FAQ](#faq)
+- [Contributing](#contributing)
+- [License](#license)
+
+## Features
+
+- **Base Image**: Debian Latest
+- **OpenConnect Server**: Latest stable version
+- **LDAP/AD Authentication**: Built-in libpam-ldap support
+- **Multi-Platform**: Supports `linux/amd64` and `linux/arm64`
+- **Flexible Networking**:
+  - Customizable DNS servers
+  - Split tunneling support
+  - Full tunnel mode
+- **Auto Certificate Generation**: Creates self-signed certs or use your own
+- **Persistent Configuration**: Mount config directory for persistence
+- **AnyConnect Compatible**: Works with Cisco AnyConnect clients
+
+## Architecture
+
+```mermaid
+flowchart TB
+    subgraph Clients
+        A[OpenConnect Client]
+        B[Cisco AnyConnect]
+    end
+
+    subgraph Docker Host
+        subgraph Container["Docker Container"]
+            C[ocserv<br/>OpenConnect Server]
+            D[PAM LDAP Module]
+        end
+    end
+
+    subgraph Backend
+        E[(LDAP/AD Server)]
+        F[Internal Network<br/>192.168.x.x]
+    end
+
+    A -->|SSL/TLS 443| C
+    B -->|SSL/TLS 443| C
+    C --> D
+    D -->|LDAP Query| E
+    C -->|VPN Tunnel| F
+```
 
 ## Quick Start
-If you have not already done so, install docker-compose in according with its [documentation.](https://docs.docker.com/compose/install/)
 
-In an empty directory, create a file called `docker-compose.yaml` and insert the below contents, substituting values suitable for your environment:
-```docker
+### Docker Compose
+
+1. Create a `docker-compose.yaml` file:
+
+```yaml
 version: "3"
 
 services:
   ocserv:
     container_name: ocserv
-    image: morganonbass/ocserv-ldap:latest
+    image: cdryzun/docker-openconnect-ldap:latest
     ports:
       - "443:443/tcp"
       - "443:443/udp"
@@ -47,12 +98,12 @@ services:
       BASEDN: 'dc=example,dc=com'
       LDAPURI: 'ldap://192.168.1.1/'
       BINDDN: 'CN=ocserv,CN=Users,DC=example,DC=com'
-      BINDPW: 'aSuperSecurePassword'
+      BINDPW: 'YourSecurePassword'
       SEARCHSCOPE: 'sub'
       PAM_LOGIN_ATTRIBUTE: 'userPrincipalName'
       CA_CN: 'VPN CA'
       CA_ORG: 'OCSERV'
-      CA_DAYS: 9999 
+      CA_DAYS: 9999
       SRV_CN: 'vpn.example.com'
       SRV_ORG: 'Example Company'
       SRV_DAYS: 9999
@@ -63,74 +114,183 @@ services:
     privileged: true
     restart: unless-stopped
 ```
-Then, start the vpn service like so:
-```
+
+2. Start the service:
+
+```bash
 docker-compose up -d
 ```
 
-## Using your own certificates
-On start, the server checks for the following files:
+### Kubernetes
+
+```bash
+cd example/kubernetes
+kubectl apply -f .
+```
+
+> **Note**: The example uses LocalPV. Create the local PV directory before deployment.
+
+## Configuration
+
+### Environment Variables
+
+| Variable | Required | Description | Default | Example |
+|----------|----------|-------------|---------|---------|
+| `LISTEN_PORT` | No | VPN listening port | `443` | `443` |
+| `DNS_SERVERS` | No | DNS servers (comma-separated) | - | `8.8.8.8,8.8.4.4` |
+| `TUNNEL_MODE` | No | Tunnel mode | `all` | `split-include` |
+| `TUNNEL_ROUTES` | No | Routes for split tunnel (CIDR) | - | `192.168.1.0/24` |
+| `SPLIT_DNS_DOMAINS` | No | DNS domains for split DNS | - | `example.com` |
+| `CLIENTNET` | No | Client IP network | `192.168.255.0` | `192.168.248.0` |
+| `CLIENTNETMASK` | No | Client subnet mask | `255.255.255.0` | `255.255.255.128` |
+| `BASEDN` | **Yes** | LDAP Base DN | - | `dc=example,dc=com` |
+| `LDAPURI` | **Yes** | LDAP Server URI | - | `ldap://192.168.1.1` |
+| `BINDDN` | **Yes** | LDAP Bind DN | - | `CN=ocserv,CN=Users,DC=example,DC=com` |
+| `BINDPW` | **Yes** | LDAP Bind Password | - | `YourPassword` |
+| `SEARCHSCOPE` | No | LDAP search scope | `sub` | `sub` / `one` / `base` |
+| `PAM_LOGIN_ATTRIBUTE` | No | LDAP login attribute | `userPrincipalName` | `sAMAccountName` / `uid` |
+| `CA_CN` | No | CA Common Name | `VPN CA` | `My VPN CA` |
+| `CA_ORG` | No | CA Organization | `OCSERV` | `My Company` |
+| `CA_DAYS` | No | CA validity days | `9999` | `3650` |
+| `SRV_CN` | No | Server Common Name | - | `vpn.example.com` |
+| `SRV_ORG` | No | Server Organization | - | `My Company` |
+| `SRV_DAYS` | No | Server cert validity | `9999` | `365` |
+
+### Volumes
+
+| Volume | Required | Description |
+|--------|----------|-------------|
+| `/config` | No | Persistent configuration directory |
+
+### Ports
+
+| Port | Protocol | Description |
+|------|----------|-------------|
+| `443` | TCP | OpenConnect server (HTTPS) |
+| `443` | UDP | OpenConnect server (DTLS) |
+
+## Certificates
+
+### Auto-Generated Certificates
+
+On first start, the container checks for:
+- `/config/server-key.pem`
+- `/config/server-cert.pem`
+
+If not found, self-signed certificates are automatically generated using the `CA_*` and `SRV_*` environment variables.
+
+### Using Your Own Certificates
+
+Place your certificates at:
 ```
 /config/server-key.pem
 /config/server-cert.pem
 ```
-If these do not exist, a self signed certificate will be created. You may of course place your own signed certificates at this location.
 
-## Advanced Configuration:
-All of the relevant config files are in the /config volume. You may edit them to make use of more of Openconnect's features. Some advanced features include setting up site to site VPN links, User Groups, Proxy Protocol support and more.
+For Let's Encrypt or other CA-signed certificates, ensure the full chain is included in `server-cert.pem`.
 
-# Variables
-## Environment Variables
-| Variable | Required | Function | Example |
-|----------|----------|----------|----------|
-|`LISTEN_PORT`| No | Listening port for VPN connections|`443`|
-|`DNS_SERVERS`| No | Comma delimited name servers |`8.8.8.8,8.8.4.4`|
-|`TUNNEL_MODE`| No | Tunnel mode (all / split-include) |`split-include`|
-|`TUNNEL_ROUTES`| No | Comma delimited tunnel routes in CIDR notation |`192.168.1.0/24`|
-|`SPLIT_DNS_DOMAINS`| No | Comma delimited dns domains |`example.com`|
-|`CLIENTNET`| No | Network from which to assign client IPs |`192.168.255.0`|
-|`CLIENTNETMASK`| No | Client subnet mask |`255.255.255.0`|
-|`BASEDN`| Yes | Base DN for LDAP Search |`dc=example,dc=com`|
-|`LDAPURI`| Yes | URI of LDAP Server |`ldap://192.168.1.1`|
-|`BINDDN`| Yes | Account to bind PAM to LDAP |`CN=ocserv,CN=Users,DC=example,DC=com`|
-|`BINDPW`| Yes | Password for the bind account |`hunter2`|
-|`SEARCHSCOPE`| No | LDAP Search Scope (sub / one / base) |`sub`|
-|`PAM_LOGIN_ATTRIBUTE`| No | LDAP Attribute to match - what your user will put in the username field of their client (sAMAccountName / userPrincipalName / uid) | `userPrincipalName`|
+## Advanced Configuration
 
-## Volumes
-| Volume | Required | Function | Example |
-|----------|----------|----------|----------|
-| `config` | No | OpenConnect config files | `/your/config/path/:/config`|
+All configuration files are located in the `/config` volume:
 
-## Ports
-| Port | Proto | Required | Function | Example |
-|----------|----------|----------|----------|----------|
-| `443` | TCP | Yes | OpenConnect server TCP listening port | `443:443`|
-| `443` | UDP | Yes | OpenConnect server UDP listening port | `443:443/udp`|
+- `ocserv.conf` - Main server configuration
+- `pam_ldap.conf` - LDAP authentication settings
 
-## Login and Logout Log Messages
-After a user successfully logins to the VPN a message will be logged in the docker log.<br>
-*Example of login message:*
+Advanced features available:
+- Site-to-site VPN
+- User groups and access control
+- Proxy Protocol support
+- Custom routing rules
+
+## Security Best Practices
+
+1. **Use Strong LDAP Bind Passwords**: Never use default or weak passwords
+2. **Enable LDAPS**: Use `ldaps://` instead of `ldap://` when possible
+3. **Restrict Network Access**: Use firewall rules to limit access to the VPN port
+4. **Use Proper Certificates**: Replace self-signed certs with CA-signed certificates in production
+5. **Regular Updates**: Keep the container image updated
+6. **Secrets Management**: Use Docker secrets or Kubernetes secrets for sensitive data
+7. **Audit Logging**: Monitor VPN connection logs for suspicious activity
+
+## Troubleshooting
+
+### Connection Issues
+
+**Problem**: Client cannot connect to VPN
+
+**Solutions**:
+1. Check if port 443 is accessible: `nc -zv your-server 443`
+2. Verify container is running: `docker ps`
+3. Check container logs: `docker logs ocserv`
+
+### Authentication Failures
+
+**Problem**: LDAP authentication fails
+
+**Solutions**:
+1. Verify LDAP URI is correct and reachable
+2. Test LDAP bind credentials manually
+3. Check `PAM_LOGIN_ATTRIBUTE` matches your LDAP schema
+4. Review logs: `docker logs ocserv | grep -i ldap`
+
+### Certificate Errors
+
+**Problem**: Client shows certificate warning
+
+**Solutions**:
+1. Use CA-signed certificates for production
+2. Import the CA certificate to client devices
+3. Ensure `SRV_CN` matches your VPN hostname
+
+### Log Messages
+
+**Login success**:
 ```
-[info] User bob Connected - Server: 192.168.1.165 VPN IP: 192.168.255.194 Remote IP: 107.92.120.188 
+[info] User bob Connected - Server: 192.168.1.165 VPN IP: 192.168.255.194 Remote IP: 107.92.120.188
 ```
 
-*Example of logoff message:*
+**Logout**:
 ```
 [info] User bob Disconnected - Bytes In: 175856 Bytes Out: 4746819 Duration:63
-
 ```
-## In Kubernetes start the vpn service like so:
+
+## FAQ
+
+**Q: Which clients are supported?**
+
+A: OpenConnect client (all platforms) and Cisco AnyConnect client (tested with version 4.802045+).
+
+**Q: Can I use this without LDAP?**
+
+A: This image is specifically designed for LDAP authentication. For local user authentication, consider the base ocserv image.
+
+**Q: How do I enable split tunneling?**
+
+A: Set `TUNNEL_MODE=split-include` and define routes in `TUNNEL_ROUTES`.
+
+**Q: Is IPv6 supported?**
+
+A: Currently, the container primarily supports IPv4. IPv6 support may be added in future versions.
+
+**Q: How do I update the container?**
+
+A:
 ```bash
-cd example/kubernetes
-
-kubectl apply -f .
+docker-compose pull
+docker-compose up -d
 ```
 
-> LocalPV is used in the example, directory you need to create localPV.
+## Contributing
 
-# Issues
+Contributions are welcome! Please read our [Contributing Guide](CONTRIBUTING.md) before submitting a Pull Request.
 
-If you are having issues with this container please submit an issue on GitHub.
-Please provide logs, docker version and other information that can simplify reproducing the issue.
-Using the latest stable verison of Docker is always recommended. Support for older version is on a best-effort basis.
+## License
+
+This project is open source. See the [LICENSE](LICENSE) file for details.
+
+## Links
+
+- [OpenConnect Homepage](https://ocserv.gitlab.io/www/platforms.html)
+- [OpenConnect Documentation](https://ocserv.gitlab.io/www/manual.html)
+- [OpenConnect Source Code](https://gitlab.com/ocserv/ocserv)
+- [Report Issues](https://github.com/cdryzun/docker-openconnect-ldap/issues)
