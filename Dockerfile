@@ -1,7 +1,7 @@
 FROM debian:latest
 
 LABEL maintainer="@cdryzun" \
-      maintainer="amoaloas@gmail.com" \
+      maintainer="yangzun@treesir.pub" \
       version=0.1 \
       description="Openconnect server with libpam-ldap for AD authentication"
 
@@ -29,4 +29,4 @@ WORKDIR /config
 EXPOSE 443/tcp \
       443/udp
 
-ENTRYPOINT ["/docker-entrypoint.sh", "ocserv", "-c", "/config/ocserv.conf", "-f"] 
+ENTRYPOINT ["/docker-entrypoint.sh", "ocserv", "-c", "/config/ocserv.conf", "-f"]
